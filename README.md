@@ -108,3 +108,114 @@ productpage   ClusterIP   10.96.80.171     <none>        9080/TCP   6m
 ratings       ClusterIP   10.106.128.50    <none>        9080/TCP   6m
 reviews       ClusterIP   10.106.106.197   <none>        9080/TCP   6m
  ```
+
+Access the application. As we are not using any load balancer our ingress is exposed at 32000 port of NodeIP.
+- Lets find the Gateway URL.
+```
+$ export GATEWAY_URL=$(kubectl get po -l istio=ingress -n istio-system -o 'jsonpath={.items[0].status.hostIP}'):$(kubectl get svc istio-ingress -n istio-system -o 'jsonpath={.spec.ports[0].nodePort}')
+
+$ echo $GATEWAY_URL
+138.197.15.135:32000
+```
+
+- You can access the application at the `138.197.15.135:32000/productpage`
+Eachtie you refresh the application you will see the review section is changed. As the 3 different review versions are used so each time reviw filed get changed.
+
+## Configure the routing rules.
+
+### Default route
+
+For example, a simple rule to send 100% of incoming traffic for a “reviews” service to version “v1” can be described using the Rules as follow
+```
+apiVersion: config.istio.io/v1alpha2
+kind: RouteRule
+metadata:
+  name: defaultroute
+spec:
+  destination:
+    name: reviews
+  route:
+  - labels:
+      version: v1
+    weight: 100
+```
+- Deploy this route rule.
+```
+$ kubectl create -f route1.yaml 
+routerule "defaultroute" created
+```
+Try to access the `BookInfo` application at the `138.197.15.135:32000/productpage` and try to refresh the page you will see traffic from reviews” service version “v1” is allowed so there is no any chage in review section.
+
+- Delete the route rule.
+```
+$ kubectl delete routerule defaultroute
+routerule "defaultroute" deleted
+```
+
+### Split traffic between service versions.
+For example, the following rule will route 25% of traffic for the “reviews” service to instances with the “v2” tag and the remaining traffic (i.e., 75%) to “v1”.
+
+```
+apiVersion: config.istio.io/v1alpha2
+kind: RouteRule
+metadata:
+  name: split
+spec:
+  destination:
+    name: reviews
+  route:
+  - labels:
+      version: v2
+    weight: 25
+  - labels:
+      version: v1
+    weight: 75
+
+```
+- Deploy this rule.
+```
+$ kubectl create -f split.yaml 
+routerule "split" created
+```
+- Try to access the `BookInfo` application at the `138.197.15.135:32000/productpage` and You can check rule is applied.
+
+- Delete the rule.
+```
+$ kubectl delete routerule split
+routerule "split" deleted
+```
+
+### Injecting faults in the request path
+
+#### Delay 
+- The following example will introduce a 5 second delay in 10% of the requests to the “v1” version of the “reviews” microservice.
+```
+apiVersion: config.istio.io/v1alpha2
+kind: RouteRule
+metadata:
+  name: delay
+spec:
+  destination:
+    name: reviews
+  route:
+  - labels:
+      version: v1
+  httpFault:
+    delay:
+      percent: 10
+      fixedDelay: 5s
+
+```
+
+- Deploy the rule.
+```
+$ kubectl create -f delay.yaml 
+routerule "delay" created
+```
+- Try to access the `BookInfo` application at the `138.197.15.135:32000/productpage` and You can check rule is applied.
+
+- Delete the rule.
+```
+$ kubectl delete routerule delay
+routerule "delay" deleted
+```
