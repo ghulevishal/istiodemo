@@ -123,7 +123,7 @@ Eachtie you refresh the application you will see the review section is changed. 
 
 ## Configure the routing rules.
 
-### Default route
+### Request Route
 
 For example, a simple rule to send 100% of incoming traffic for a “reviews” service to version “v1” can be described using the Rules as follow
 ```
@@ -152,7 +152,9 @@ $ kubectl delete routerule defaultroute
 routerule "defaultroute" deleted
 ```
 
-### Split traffic between service versions.
+### Traffic Shifting.
+
+#### Example 1:
 For example, the following rule will route 25% of traffic for the “reviews” service to instances with the “v2” tag and the remaining traffic (i.e., 75%) to “v1”.
 
 ```
@@ -185,9 +187,38 @@ $ kubectl delete routerule split
 routerule "split" deleted
 ```
 
-### Injecting faults in the request path
+#### Example 2:
 
-#### Delay 
+- The following rule will route 50% of traffic for the “reviews” service to instances with the “v2” tag and the remaining 50% traffic to “v3”
+```
+apiVersion: config.istio.io/v1alpha2
+kind: RouteRule
+metadata:
+  name: split2
+spec:
+  destination:
+    name: reviews
+  precedence: 1
+  route:
+  - labels:
+      version: v2
+    weight: 50
+  - labels:
+      version: v3
+    weight: 50
+```
+
+- Deploy the route rule.
+```
+$ kubectl create -f split2.yaml 
+routerule "split2" created
+```
+- Try to access the `BookInfo` application at the `138.197.15.135:32000/productpage` and You can check rule is applied.
+Traffic is splitted between the version `v2` and `v3`.
+
+
+### Fault Injection.
+
 - The following example will introduce a 5 second delay in 10% of the requests to the “v1” version of the “reviews” microservice.
 ```
 apiVersion: config.istio.io/v1alpha2
@@ -202,7 +233,7 @@ spec:
       version: v1
   httpFault:
     delay:
-      percent: 10
+      percent: 50
       fixedDelay: 5s
 
 ```
@@ -218,4 +249,41 @@ routerule "delay" created
 ```
 $ kubectl delete routerule delay
 routerule "delay" deleted
+```
+### Route a specific user to reviews:v2
+
+Lets enable the ratings service for test user “cloudyuga” by routing productpage traffic to `reviews:v2` instances.
+Route rule will look like follow.
+```
+apiVersion: config.istio.io/v1alpha2
+kind: RouteRule
+metadata:
+  name: access-cloudyuga
+spec:
+  destination:
+    name: reviews
+  precedence: 2
+  match:
+    request:
+      headers:
+        cookie:
+          regex: "^(.*?;)?(user=cloudyuga)(;.*)?$"
+  route:
+  - labels:
+      version: v2
+```
+
+- Deploy the above rule.
+```
+$ kubectl create -f access.yaml 
+routerule "access-cloudyuga" created
+```
+
+- Try to access `BookInfo` at `138.197.15.135:32000/productpage`, login with the username as `cloudyuga` and you will notice that only review verson is accessible to the user `cloudyuga`.
+
+- Delete Route Rule.
+```
+$ kubectl delete routerule access-cloudyuga
+routerule "access-cloudyuga" deleted
+
 ```
